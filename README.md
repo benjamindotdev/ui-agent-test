@@ -8,8 +8,13 @@ This is intentionally scoped for a fast interview task (3–6 hours): clear desi
 
 - Prompt-driven page generation in a Next.js app.
 - A screen preview container that renders HTML composed from reusable components.
-- A sidebar listing the current screen’s components.
+- A left sidebar listing the current screen’s components.
+- A full-height right sidebar showing system state and action history.
 - Conversation-aware updates across multiple prompts (session memory in-memory).
+- A before/after review flow for component updates:
+    - update requests create pending diffs per component
+    - user can preview `Before` vs `After`
+    - user decides which version to persist (`Keep Before` / `Keep After`)
 - Planner decisions for:
   - `REGENERATE_SCREEN`
   - `UPDATE_COMPONENTS`
@@ -32,6 +37,7 @@ This is intentionally scoped for a fast interview task (3–6 hours): clear desi
 - Preserves session messages.
 - Stores screen composition and components separately.
 - Applies component-level updates without full regen when possible.
+- For update actions, stores pending before/after variants instead of immediately overwriting committed HTML.
 
 ### 3) Generator Layer (`lib/agent/generator.ts`)
 - Generates or updates a single component’s HTML.
@@ -41,11 +47,14 @@ This is intentionally scoped for a fast interview task (3–6 hours): clear desi
 ## Data model
 
 - `Component`: `id`, `name`, `type`, `description`, `html`
+- `PendingComponentUpdate`: `componentId`, `beforeHtml`, `afterHtml`, `prompt`, `createdAt`
 - `Screen`: `id`, `name`, `componentOrder[]`
-- `SessionState`: `sessionId`, `messages[]`, `screen`, `components<Record<string, Component>>`
+- `SessionState`: `sessionId`, `messages[]`, `screen`, `components<Record<string, Component>>`, `pendingUpdates<Record<string, PendingComponentUpdate>>`
 
 Rendering is composition-driven:
 `screen.componentOrder.map(id => components[id].html)`
+
+Pending updates are resolved through API (`Keep Before` / `Keep After`) before they are committed.
 
 ## Tech stack
 
@@ -69,6 +78,8 @@ Rendering is composition-driven:
 - ✅ Component-based screen decomposition and composition
 - ✅ Planner decision logic (regen vs update vs add)
 - ✅ Conversation/session memory (in-memory)
+- ✅ Human-in-the-loop update persistence (before/after toggle + explicit commit choice)
+- ✅ System action history and state visibility in UI
 - ✅ Clean, pragmatic TypeScript architecture
 - ✅ No heavy agent frameworks
 - ✅ Fast iteration oriented implementation
