@@ -48,7 +48,24 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           prompt: submittedPrompt,
-          sessionId 
+          sessionId,
+          clientSnapshot: {
+            screen,
+            components,
+            pendingUpdates,
+            messages: systemHistory.flatMap((entry) => {
+              const items: Array<{ role: 'user' | 'assistant'; content: string }> = [
+                { role: 'user', content: entry.prompt },
+              ];
+              if (entry.action) {
+                items.push({
+                  role: 'assistant',
+                  content: `Action: ${entry.action}. Reasoning: ${entry.reasoning ?? ''}`,
+                });
+              }
+              return items;
+            }),
+          },
         })
       });
 
@@ -289,7 +306,7 @@ export default function Home() {
                 </div>
 
                 {/* Rendered Components */}
-                <div className="divide-y divide-slate-100">
+                <div className="divide-y divide-slate-100 relative">
                   {screen.componentOrder.length > 0 ? (
                     screen.componentOrder.map((id) => {
                         const component = components[id];
@@ -306,9 +323,23 @@ export default function Home() {
                         );
                     })
                   ) : (
-                    <div className="flex flex-col items-center justify-center h-[600px] text-slate-400">
-                      <RefreshCw className="w-12 h-12 mb-4 opacity-20 animate-spin-slow" />
-                      <p>Generating components...</p>
+                    isLoading ? (
+                      <div className="flex flex-col items-center justify-center h-[600px] text-slate-400">
+                        <RefreshCw className="w-12 h-12 mb-4 opacity-20 animate-spin-slow" />
+                        <p>Generating components...</p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-[600px] text-slate-400">
+                        <p>No components available in this session.</p>
+                      </div>
+                    )
+                  )}
+                  {isLoading && (
+                    <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex items-center justify-center z-20">
+                      <div className="flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-sm shadow-sm">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Loading...</span>
+                      </div>
                     </div>
                   )}
                   <div ref={messagesEndRef} />

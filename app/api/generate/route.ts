@@ -2,24 +2,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processUserRequest } from "@/lib/agent/orchestrator";
 import { getSession, createSession, saveSession } from "@/lib/store";
-import { GenerateResponse } from "@/lib/types";
+import { GenerateResponse, SessionState, Message } from "@/lib/types";
+
+type ClientSnapshot = {
+  screen?: SessionState["screen"] | null;
+  components?: SessionState["components"] | null;
+  pendingUpdates?: SessionState["pendingUpdates"] | null;
+  messages?: Message[] | null;
+};
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { prompt, sessionId: clientSessionId } = body;
+    const { prompt, sessionId: clientSessionId, clientSnapshot } = body as {
+      prompt?: string;
+      sessionId?: string;
+      clientSnapshot?: ClientSnapshot;
+    };
     
     if (!prompt) {
       return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
     }
 
     // Get or create session
-    let sessionId = clientSessionId;
-    let sessionState = sessionId ? getSession(sessionId) : null;
+    let sessionId: string = clientSessionId ?? crypto.randomUUID();
+    let sessionState = getSession(sessionId);
     
     if (!sessionState) {
-      sessionId = crypto.randomUUID();
-      sessionState = createSession(sessionId);
+      sessionState = buildSessionFromSnapshot(sessionId, clientSnapshot) ?? createSession(sessionId);
     }
 
     // Process the request
@@ -50,4 +60,22 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function buildSessionFromSnapshot(sessionId: string, snapshot?: ClientSnapshot): SessionState | null {
+  if (!snapshot?.screen || !snapshot?.components) {
+    return null;
+  }
+
+  const normalizedMessages = Array.isArray(snapshot.messages)
+    ? snapshot.messages.filter((msg) => msg && (msg.role === "user" || msg.role === "assistant") && typeof msg.content === "string")
+    : [];
+
+  return {
+    sessionId,
+    messages: normalizedMessages,
+    screen: snapshot.screen,
+    components: snapshot.components,
+    pendingUpdates: snapshot.pendingUpdates ?? {},
+  };
 }

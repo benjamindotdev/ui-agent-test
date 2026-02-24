@@ -39,6 +39,12 @@ This is intentionally scoped for a fast interview task (3–6 hours): clear desi
 - Applies component-level updates without full regen when possible.
 - For update actions, stores pending before/after variants instead of immediately overwriting committed HTML.
 
+### 4) API Session Rehydration (`app/api/generate/route.ts` + `app/page.tsx`)
+- In local dev, in-memory session state is usually available across requests.
+- In Vercel/serverless, memory is not guaranteed between invocations.
+- To keep multi-step updates working, the client sends a lightweight `clientSnapshot` (`screen`, `components`, `pendingUpdates`, messages) with each generate request.
+- If server memory is cold, the API rebuilds session state from this snapshot before running the planner/orchestrator.
+
 ### 3) Generator Layer (`lib/agent/generator.ts`)
 - Generates or updates a single component’s HTML.
 - Returns HTML fragments only (Tailwind classes, semantic markup).
@@ -100,7 +106,8 @@ These are known and intentional given the interview scope and time constraint:
 
 3. **In-memory session storage only**
     - Risk: data resets on restart and is single-process.
-    - Why not addressed: persistent storage was explicitly optional and not needed to demonstrate architecture.
+    - Mitigation implemented: snapshot rehydration path for serverless invocations where in-memory state may be missing.
+    - Why not fully addressed: no durable database by design (outside brief scope and time budget).
 
 4. **No production hardening features**
     - Examples: auth, rate-limiting, observability, retries with backoff, circuit breakers.
