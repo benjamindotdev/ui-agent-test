@@ -8,6 +8,7 @@ import { Sparkles, RefreshCw, Send, Loader2 } from 'lucide-react';
 export default function Home() {
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [hasSubmittedPrompt, setHasSubmittedPrompt] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   
   // State from API
@@ -28,6 +29,7 @@ export default function Home() {
 
     const submittedPrompt = prompt.trim();
     const actionId = crypto.randomUUID();
+    setHasSubmittedPrompt(true);
 
     setSystemHistory((current) => ([
       {
@@ -344,6 +346,16 @@ export default function Home() {
                   )}
                   <div ref={messagesEndRef} />
                 </div>
+             </div>
+           ) : hasSubmittedPrompt ? (
+             <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-4 mt-20">
+               <Loader2 className="w-10 h-10 animate-spin text-purple-500" />
+               <p className="text-sm text-slate-500">Loading preview...</p>
+               <div className="w-full max-w-3xl space-y-3 mt-4">
+                 <div className="h-16 bg-white border border-slate-200 rounded-lg animate-pulse" />
+                 <div className="h-40 bg-white border border-slate-200 rounded-lg animate-pulse" />
+                 <div className="h-24 bg-white border border-slate-200 rounded-lg animate-pulse" />
+               </div>
              </div>
            ) : (
              <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-6 mt-20">
