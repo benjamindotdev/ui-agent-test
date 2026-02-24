@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
       sessionId,
       screen: newState.screen,
       components: newState.components,
+      pendingUpdates: newState.pendingUpdates,
       plannerReasoning: plannerOutput.reasoning,
       action: plannerOutput.action
     };

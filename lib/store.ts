@@ -30,7 +30,8 @@ export function createSession(sessionId: string): SessionState {
       name: "Empty Screen",
       componentOrder: []
     },
-    components: {}
+    components: {},
+    pendingUpdates: {}
   };
   saveSession(newState);
   return newState;

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
-import { Component, Screen, ActionType } from '@/lib/types';
-import { DebugPanel } from '@/components/debug/DebugPanel';
+import { Component, Screen, ActionType, PendingComponentUpdate } from '@/lib/types';
+import { DebugPanel, SystemActionEntry } from '@/components/debug/DebugPanel';
 import { Sparkles, RefreshCw, Send, Loader2 } from 'lucide-react';
 
 export default function Home() {
@@ -13,8 +13,12 @@ export default function Home() {
   // State from API
   const [screen, setScreen] = useState<Screen | null>(null);
   const [components, setComponents] = useState<Record<string, Component>>({});
+  const [pendingUpdates, setPendingUpdates] = useState<Record<string, PendingComponentUpdate>>({});
+  const [previewModeByComponent, setPreviewModeByComponent] = useState<Record<string, 'before' | 'after'>>({});
+  const [resolvingComponentId, setResolvingComponentId] = useState<string | null>(null);
   const [lastAction, setLastAction] = useState<ActionType | undefined>(undefined);
   const [lastReasoning, setLastReasoning] = useState<string | undefined>(undefined);
+  const [systemHistory, setSystemHistory] = useState<SystemActionEntry[]>([]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -22,6 +26,20 @@ export default function Home() {
     e.preventDefault();
     if (!prompt.trim() || isLoading) return;
 
+    const submittedPrompt = prompt.trim();
+    const actionId = crypto.randomUUID();
+
+    setSystemHistory((current) => ([
+      {
+        id: actionId,
+        prompt: submittedPrompt,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      },
+      ...current,
+    ]));
+
+    setPrompt('');
     setIsLoading(true);
     
     try {
@@ -29,7 +47,7 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          prompt: prompt, // Ensure prompt is sent
+          prompt: submittedPrompt,
           sessionId 
         })
       });
@@ -41,12 +59,46 @@ export default function Home() {
       setSessionId(data.sessionId);
       setScreen(data.screen);
       setComponents(data.components);
+      setPendingUpdates(data.pendingUpdates ?? {});
+      setPreviewModeByComponent((current) => {
+        const next = { ...current };
+        const updates = data.pendingUpdates ?? {};
+        Object.keys(updates).forEach((id) => {
+          if (!next[id]) {
+            next[id] = 'after';
+          }
+        });
+        Object.keys(next).forEach((id) => {
+          if (!updates[id]) {
+            delete next[id];
+          }
+        });
+        return next;
+      });
       setLastAction(data.action);
       setLastReasoning(data.plannerReasoning);
-      setPrompt(''); // Clear input on success
+      setSystemHistory((current) => current.map((item) => (
+        item.id === actionId
+          ? {
+              ...item,
+              action: data.action,
+              reasoning: data.plannerReasoning,
+              status: 'completed',
+            }
+          : item
+      )));
       
     } catch (error) {
       console.error(error);
+      setSystemHistory((current) => current.map((item) => (
+        item.id === actionId
+          ? {
+              ...item,
+              reasoning: 'Request failed',
+              status: 'failed',
+            }
+          : item
+      )));
       alert('Failed to generate UI. Please try again.');
     } finally {
       setIsLoading(false);
@@ -68,6 +120,45 @@ export default function Home() {
     setPrompt(val);
   };
 
+  const setPreviewMode = (componentId: string, mode: 'before' | 'after') => {
+    setPreviewModeByComponent((current) => ({
+      ...current,
+      [componentId]: mode,
+    }));
+  };
+
+  const resolvePendingUpdate = async (componentId: string, decision: 'before' | 'after') => {
+    if (!sessionId || resolvingComponentId) return;
+    setResolvingComponentId(componentId);
+
+    try {
+      const res = await fetch(`/api/components/${componentId}/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, decision }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to resolve pending update');
+      }
+
+      const data = await res.json();
+      setScreen(data.screen);
+      setComponents(data.components);
+      setPendingUpdates(data.pendingUpdates ?? {});
+      setPreviewModeByComponent((current) => {
+        const next = { ...current };
+        delete next[componentId];
+        return next;
+      });
+    } catch (error) {
+      console.error(error);
+      alert('Failed to resolve component update. Please try again.');
+    } finally {
+      setResolvingComponentId(null);
+    }
+  };
+
   return (
     <main className="flex h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden">
       {/* Sidebar / Controls */}
@@ -81,16 +172,6 @@ export default function Home() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Debug Panel showing Planner Logic */}
-          <div className="bg-slate-950 rounded-xl overflow-hidden shadow-inner ring-1 ring-slate-900/10">
-            <DebugPanel 
-              lastAction={lastAction}
-              lastReasoning={lastReasoning}
-              componentCount={screen ? screen.componentOrder.length : 0}
-              screenName={screen ? screen.name : 'Waiting for prompt...'}
-            />
-          </div>
-
           {/* Component List (Minimal) */}
           {screen && (
             <div className="space-y-2">
@@ -99,12 +180,55 @@ export default function Home() {
                 {screen.componentOrder.map((id, index) => {
                   const comp = components[id];
                   if (!comp) return null;
+                  const pending = pendingUpdates[id];
+                  const previewMode = previewModeByComponent[id] ?? 'before';
                   return (
-                    <li key={id} className="text-sm px-3 py-2 bg-slate-50 rounded border border-slate-100 text-slate-600 flex justify-between items-center group hover:border-purple-200 transition-colors cursor-pointer">
-                      <span className="truncate max-w-[180px]">{comp.name}</span>
-                      <span className="text-[10px] text-slate-400 font-mono bg-slate-100 px-1.5 py-0.5 rounded group-hover:bg-purple-50 group-hover:text-purple-600">
-                        #{index + 1}
-                      </span>
+                    <li key={id} className="text-sm px-3 py-2 bg-slate-50 rounded border border-slate-100 text-slate-600 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="truncate max-w-[180px]">{comp.name}</span>
+                        <span className="text-[10px] text-slate-400 font-mono bg-slate-100 px-1.5 py-0.5 rounded">
+                          #{index + 1}
+                        </span>
+                      </div>
+                      {pending && (
+                        <div className="space-y-2">
+                          <div className="text-[10px] uppercase tracking-wide font-semibold text-amber-600">Pending update</div>
+                          <div className="grid grid-cols-2 gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setPreviewMode(id, 'before')}
+                              className={`px-2 py-1 rounded text-[11px] border ${previewMode === 'before' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}
+                            >
+                              Before
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPreviewMode(id, 'after')}
+                              className={`px-2 py-1 rounded text-[11px] border ${previewMode === 'after' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}
+                            >
+                              After
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1">
+                            <button
+                              type="button"
+                              disabled={resolvingComponentId === id}
+                              onClick={() => resolvePendingUpdate(id, 'before')}
+                              className="px-2 py-1 rounded text-[11px] border border-slate-200 bg-white text-slate-700 disabled:opacity-50"
+                            >
+                              Keep Before
+                            </button>
+                            <button
+                              type="button"
+                              disabled={resolvingComponentId === id}
+                              onClick={() => resolvePendingUpdate(id, 'after')}
+                              className="px-2 py-1 rounded text-[11px] border border-emerald-300 bg-emerald-50 text-emerald-700 disabled:opacity-50"
+                            >
+                              Keep After
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </li>
                   );
                 })}
@@ -170,9 +294,14 @@ export default function Home() {
                     screen.componentOrder.map((id) => {
                         const component = components[id];
                         if (!component) return null;
+                        const pending = pendingUpdates[id];
+                        const previewMode = previewModeByComponent[id] ?? 'before';
+                        const htmlToRender = pending
+                          ? (previewMode === 'after' ? pending.afterHtml : pending.beforeHtml)
+                          : component.html;
                         return (
                             <div key={id} className={`render-wrapper-${id}`}>
-                               <div dangerouslySetInnerHTML={{ __html: component.html }} />
+                               <div dangerouslySetInnerHTML={{ __html: htmlToRender }} />
                             </div>
                         );
                     })
@@ -213,6 +342,16 @@ export default function Home() {
            )}
         </div>
       </main>
+
+      <aside className="w-96 bg-slate-950 border-l border-slate-800 h-full">
+        <DebugPanel
+          lastAction={lastAction}
+          lastReasoning={lastReasoning}
+          componentCount={screen ? screen.componentOrder.length : 0}
+          screenName={screen ? screen.name : 'Waiting for prompt...'}
+          history={systemHistory}
+        />
+      </aside>
     </main>
   );
 }

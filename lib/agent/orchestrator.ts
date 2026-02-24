@@ -43,6 +43,7 @@ async function handleRegenerateScreen(state: SessionState, plan: PlannerResponse
   state.screen.name = plan.screenName || "New Screen";
   state.screen.componentOrder = [];
   state.components = {};
+  state.pendingUpdates = {};
 
   if (!plan.newComponents) return;
 
@@ -88,14 +89,20 @@ async function handleUpdateComponents(state: SessionState, plan: PlannerResponse
       existingHtml: existingComp.html
     });
 
-    return { ...existingComp, html: newHtml };
+    return {
+      componentId: id,
+      beforeHtml: existingComp.html,
+      afterHtml: newHtml,
+      prompt: userPrompt,
+      createdAt: new Date().toISOString(),
+    };
   });
 
   const results = await Promise.all(updates);
   
-  results.forEach(updated => {
-    if (updated) {
-      state.components[updated.id] = updated;
+  results.forEach((pendingUpdate) => {
+    if (pendingUpdate) {
+      state.pendingUpdates[pendingUpdate.componentId] = pendingUpdate;
     }
   });
 }

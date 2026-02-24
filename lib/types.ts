@@ -8,6 +8,14 @@ export interface Component {
   html: string;
 }
 
+export interface PendingComponentUpdate {
+  componentId: string;
+  beforeHtml: string;
+  afterHtml: string;
+  prompt: string;
+  createdAt: string;
+}
+
 export interface Screen {
   id: string; // unique ID
   name: string;
@@ -24,6 +32,7 @@ export interface SessionState {
   messages: Message[];
   screen: Screen;
   components: Record<string, Component>;
+  pendingUpdates: Record<string, PendingComponentUpdate>;
 }
 
 // Planner Types
@@ -41,6 +50,7 @@ export interface GenerateResponse {
   sessionId: string;
   screen: Screen; 
   components: Record<string, Component>;
+  pendingUpdates: Record<string, PendingComponentUpdate>;
   plannerReasoning: string;
   action: ActionType;
 }
